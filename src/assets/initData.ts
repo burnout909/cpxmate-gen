@@ -22,13 +22,13 @@ export const createInitialChecklistJson = (): ChecklistJson => ({
 // 아주 러프한 기본 시나리오 예시
 export const createInitialScenarioJson = (): VirtualPatient => ({
   id: "default_001",
-  title: "기본 시나리오",
+  title: "",
   description: "기본 값으로 생성된 가상환자 시나리오입니다.",
   type: "object",
   required: ["meta", "history", "additional_history", "physical_exam", "questions"],
   properties: {
     meta: {
-      chief_complaint: "배가 너무 아파요",
+      chief_complaint: "",
       name: "이춘배",
       mrn: 123456,
       age: 48,

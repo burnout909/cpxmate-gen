@@ -23,9 +23,10 @@ interface Props {
     transcriptS3Key: string | null;
     caseName: string | null;
     origin: "VP" | "SP";
+    showHeader?: boolean;
 }
 
-export default function ScoreClient({ s3Key, transcriptS3Key, caseName, origin }: Props) {
+export default function ScoreClient({ s3Key, transcriptS3Key, caseName, origin, showHeader = true }: Props) {
     const [statusMessage, setStatusMessage] = useState<string | null>('준비 중');
     const [results, setResults] = useState<SectionResult[]>([]);
     const [gradesBySection, setGradesBySection] = useState<Record<string, GradeItem[]>>({});
@@ -184,7 +185,7 @@ export default function ScoreClient({ s3Key, transcriptS3Key, caseName, origin }
     }, [statusMessage]);
     return (
         <>
-            <Header />
+            {showHeader && <Header />}
             <div className="relative flex flex-col items-center justify-center px-4 pb-[136px] overflow-y-auto"
                 ref={scrollContainerRef}
             >

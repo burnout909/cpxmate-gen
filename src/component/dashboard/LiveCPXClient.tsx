@@ -3,19 +3,27 @@ import { useEffect, useState, useRef, useCallback, useTransition } from "react";
 import { RealtimeAgent, RealtimeSession } from "@openai/agents/realtime";
 import SmallHeader from "@/component/SmallHeader";
 import BottomFixButton from "@/component/BottomFixButton";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { standardizeToMP3 } from "@/utils/audioPreprocessing";
-import buildPatientInstructions from "./buildPrompt";
-import { 
-    // loadVirtualPatient, 
-    loadVPProfile, VirtualPatient } from "@/utils/loadVirtualPatient";
+import buildPatientInstructions from "../../utils/buildPrompt";
+import {
+    // loadVirtualPatient,
+    loadVPProfile, VirtualPatient
+} from "@/utils/loadVirtualPatient";
 import Image, { StaticImageData } from 'next/image';
 import PlayIcon from "@/assets/icon/PlayIcon.svg";
 import PauseIcon from "@/assets/icon/PauseIcon.svg";
 import FallbackProfile from "@/assets/virtualPatient/acute_abdominal_pain_001.png"
 import { generateUploadUrl } from "@/app/api/s3/s3";
+import ScoreClient from "@/component/score/ScoreClient";
 
-type Props = { category: string; caseName: string };
+type Props = {
+    category: string;
+    caseName: string;
+    variant?: "page" | "panel";
+    virtualPatient?: VirtualPatient;
+    onLockChange?: (locked: boolean) => void;
+};
 
 const INITIAL_SECONDS = 12 * 60; // 720s = 12분
 const INITIAL_READY_SECONDS = 60; // 준비 시간 60초
@@ -23,8 +31,14 @@ const INITIAL_READY_SECONDS = 60; // 준비 시간 60초
 /* °C 포맷 */
 const formatTemp = (t: number) => `${t.toFixed(1)}°C`;
 
-export default function LiveCPXClient({ category, caseName }: Props) {
-    const router = useRouter();
+export default function LiveCPXClient({
+    category,
+    caseName,
+    variant = "page",
+    virtualPatient,
+    onLockChange,
+}: Props) {
+    const isPanel = variant === "panel";
 
     // ===== 상태값 =====
     const [isRecording, setIsRecording] = useState(false);
@@ -35,16 +49,28 @@ export default function LiveCPXClient({ category, caseName }: Props) {
     const [isFinished, setIsFinished] = useState(false);
     const [readySeconds, setReadySeconds] = useState<number | null>(null); //준비 시간 타이머
     const [conversationText, setConversationText] = useState<string[]>([]);
+    const [scoreParams, setScoreParams] = useState<{
+        transcriptS3Key: string;
+        caseName: string | null;
+        origin: "VP" | "SP";
+    } | null>(null);
 
     const [profileImage, setProfileImage] = useState<StaticImageData>(FallbackProfile);
 
     //환자 caseData
-    const [caseData, setCaseData] = useState<VirtualPatient | null>(null);
+    const [caseData, setCaseData] = useState<VirtualPatient | null>(virtualPatient ?? null);
     const pathname = usePathname(); // 현재 URL 경로 추적
 
     const [isPending, startTransition] = useTransition()
     //일시정지 안된다는 상태메시지
     const [statusMessage, setStatusMessage] = useState<string | undefined>(undefined)
+    const scoreVisible = !!scoreParams;
+
+    // 부모에 실행 상태 공유
+    useEffect(() => {
+        const locked = connected || isRecording || isUploading || scoreVisible;
+        onLockChange?.(locked);
+    }, [connected, isRecording, isUploading, scoreVisible, onLockChange]);
 
     /**stopSession */
     const stopAndResetSession = useCallback(async () => {
@@ -77,9 +103,21 @@ export default function LiveCPXClient({ category, caseName }: Props) {
         }
     }, []);
 
+    useEffect(() => {
+        if (virtualPatient) {
+            setCaseData(virtualPatient);
+        }
+    }, [virtualPatient]);
+
     // 케이스 프로필 이미지 로드
     useEffect(() => {
         let mounted = true;
+
+        if (!caseName) {
+            setProfileImage(FallbackProfile);
+            return;
+        }
+
         (async () => {
             try {
                 const img = await loadVPProfile(caseName);
@@ -124,6 +162,9 @@ export default function LiveCPXClient({ category, caseName }: Props) {
 
         async function fetchCaseData() {
             try {
+                if (virtualPatient) {
+                    setCaseData(virtualPatient);
+                }
                 // const data = await loadVirtualPatient(caseName);
                 // if (isMounted) setCaseData(data);
             } catch (err) {
@@ -131,12 +172,12 @@ export default function LiveCPXClient({ category, caseName }: Props) {
             }
         }
 
-        if (caseName) fetchCaseData();
+        if (caseName || virtualPatient) fetchCaseData();
 
         return () => {
             isMounted = false;
         };
-    }, [caseName]);
+    }, [caseName, virtualPatient]);
 
     // ===== 레퍼런스 =====
     const sessionRef = useRef<any>(null);
@@ -189,8 +230,15 @@ export default function LiveCPXClient({ category, caseName }: Props) {
 
     /** 세션 시작 */
     async function startSession() {
+        if (scoreVisible) return;
         if (sessionRef.current || connected || isRecording || isUploading) return;
         setConnected(true);
+
+        if (!caseData) {
+            alert("가상환자 데이터가 준비되지 않았어요.");
+            setConnected(false);
+            return;
+        }
 
         try {
             const res = await fetch("/api/realtime-key");
@@ -198,7 +246,7 @@ export default function LiveCPXClient({ category, caseName }: Props) {
 
             const agent = new RealtimeAgent({
                 name: "표준화 환자 AI",
-                instructions: buildPatientInstructions(caseData as VirtualPatient),
+                instructions: buildPatientInstructions(caseData),
                 voice: caseData?.properties.meta.sex === "남성" ? "ash" : "coral"
             });
 
@@ -214,7 +262,7 @@ export default function LiveCPXClient({ category, caseName }: Props) {
                 prewarm: true, // 세션 handshake 미리 완료
                 turnDetection: {
                     type: "client_vad",
-                    silence_duration_ms: 0,  
+                    silence_duration_ms: 0,
                     autoStart: false, //먼저 발화하지 않도록 설정
                     prefix_padding_ms: 80, //AI 발화시 앞부분 잘리지 않게 padding
                     min_duration_ms: 250, // 너무 짧은 음성(숨소리 등) 무시
@@ -276,8 +324,17 @@ export default function LiveCPXClient({ category, caseName }: Props) {
         }
     }
 
-    /** ⏹ 세션 종료 + 사용자 음성 및 대화 로그 업로드 */
+    /** ⏹ 세션 종료 + 사용자 음성 및 대화 로그 업로드 + 채점 이동 */
     async function stopSession() {
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}.` +
+            `${String(now.getMonth() + 1).padStart(2, "0")}.` +
+            `${String(now.getDate()).padStart(2, "0")}-` +
+            `${String(now.getHours()).padStart(2, "0")}:` +
+            `${String(now.getMinutes()).padStart(2, "0")}:` +
+            `${String(now.getSeconds()).padStart(2, "0")}`;
+        const historyKey = `admin_gen_VP_script/${timestamp}.txt`;
+
         try {
             setIsUploading(true);
 
@@ -293,13 +350,6 @@ export default function LiveCPXClient({ category, caseName }: Props) {
                 sessionRef.current = null;
             }
 
-            const now = new Date();
-            const timestamp = `${now.getFullYear()}.` +
-                `${String(now.getMonth() + 1).padStart(2, "0")}.` +
-                `${String(now.getDate()).padStart(2, "0")}-` +
-                `${String(now.getHours()).padStart(2, "0")}:` +
-                `${String(now.getMinutes()).padStart(2, "0")}:` +
-                `${String(now.getSeconds()).padStart(2, "0")}`;
             // 사용자 음성 webm → mp3 변환
             const userBlob = new Blob(userAudioChunks.current, { type: "audio/webm" });
             const userMP3 = await standardizeToMP3(userBlob);
@@ -317,8 +367,6 @@ export default function LiveCPXClient({ category, caseName }: Props) {
             });
             if (!res.ok) throw new Error("S3 업로드 실패 (음성)");
 
-            const historyKey = `admin_gen_VP_script/${timestamp}.txt`;
-
 
             // 대화 로그 업로드
             if (conversationText.length > 0) {
@@ -335,21 +383,19 @@ export default function LiveCPXClient({ category, caseName }: Props) {
             } else {
                 console.warn("⚠️ 대화 내용이 비어 있어 히스토리를 업로드하지 않았습니다.");
             }
-
-            // 채점 페이지로 이동
-            startTransition(() => {
-                router.push(
-                    `/score?transcriptS3Key=${encodeURIComponent(historyKey || "")}&caseName=${encodeURIComponent(caseName)}&origin=${encodeURIComponent("VP")}`
-                );
-            });
         } catch (err) {
             console.error("업로드 중 오류:", err);
-            alert("업로드 실패");
+            alert("업로드 실패: 그래도 채점 화면으로 이동합니다.");
         } finally {
             cancelAnimationFrame(rafRef.current!);
             setIsRecording(false);
             setConnected(false);
             setIsUploading(false);
+            setScoreParams({
+                transcriptS3Key: historyKey,
+                caseName: caseName || null,
+                origin: "VP",
+            });
         }
     }
 
@@ -394,16 +440,31 @@ export default function LiveCPXClient({ category, caseName }: Props) {
         }
     }, [readySeconds]);
 
+    const displayCaseName = caseName || caseData?.properties?.meta?.name || caseData?.title || "Custom Case";
+    const displayCategory = category || "Live CPX";
+    const sidePadding = isPanel ? "px-4" : "px-6";
+    const widePadding = isPanel ? "px-4" : "px-8";
+    const bottomPadding = isPanel ? "pb-4" : "pb-[136px]";
 
     return (
-        <div className="flex flex-col min-h-dvh">
-            <div className="flex flex-col">
-                <SmallHeader
-                    title={`${category} | ${caseName}`}
-                    onClick={() => router.push("/")}
-                />
+        <>
+            <div className={isPanel ? "flex flex-1 flex-col h-full rounded-2xl border border-[#D8D2F5] bg-white shadow-sm overflow-hidden pb-5" : "flex flex-col min-h-dvh"}>
+                <div className="flex flex-col flex-1 pb-5">
+                {isPanel ? (
+                    <div className="bg-white p-4">
+                        <div className="text-xl font-semibold text-[#210535]">가상환자 테스트</div>
+                        <div className="text-base font-semibold text-[#4A3C85] mt-2">
+                            {displayCategory} | {displayCaseName}
+                        </div>
+                    </div>
+                ) : (
+                    <SmallHeader
+                        title={`${displayCategory} | ${displayCaseName}`}
+                        onClick={() => {}}
+                    />
+                )}
                 {/* 프로필 */}
-                <div className="px-6 pt-4 w-full flex items-center gap-4">
+                <div className={`${sidePadding} pt-4 w-full flex items-center gap-4`}>
                     <div className="w-[56px] h-[56px] relative">
                         <Image
                             src={profileImage}
@@ -422,48 +483,48 @@ export default function LiveCPXClient({ category, caseName }: Props) {
                         </p>
                     </div>
                 </div>
-                <div className="w-full px-6 pt-3">
+                <div className={`${sidePadding} pt-3`}>
                     <div className="w-full border-b border-gray-300" />
                 </div>
                 {/* 설명 */}
-                <div className="px-8 pt-3">
-                    <p className="text-[#210535] text-[15px] leading-relaxed">
+                <div className={`${widePadding} pt-3`}>
+                    <p className="text-[#210535] text-[16px] leading-relaxed">
                         {caseData?.description}
                     </p>
                 </div>
 
                 {/* 바이탈표 (2열 그리드) */}
-                <div className="grid grid-cols-2 gap-y-2 gap-x-2 px-8 pt-3 pb-6">
+                <div className={`grid grid-cols-2 gap-y-2 gap-x-2 ${widePadding} pt-3 pb-6`}>
                     <div className="flex gap-2">
-                        <div className="text-[#210535] font-semibold text-[15px]">혈압</div>
-                        <div className="text-[#210535] text-[15px]">
+                        <div className="text-[#210535] font-semibold text-[16px]">혈압</div>
+                        <div className="text-[#210535] text-[16px]">
                             {vitalData?.bp}
                         </div>
                     </div>
 
                     <div className="flex gap-2">
-                        <div className="text-[#210535] font-semibold text-[15px]">맥박</div>
-                        <div className="text-[#210535] text-[15px]">
+                        <div className="text-[#210535] font-semibold text-[16px]">맥박</div>
+                        <div className="text-[#210535] text-[16px]">
                             {vitalData?.hr}
                         </div>
                     </div>
 
                     <div className="flex gap-2">
-                        <div className="text-[#210535] font-semibold text-[15px]">호흡수</div>
-                        <div className="text-[#210535] text-[15px]">
+                        <div className="text-[#210535] font-semibold text-[16px]">호흡수</div>
+                        <div className="text-[#210535] text-[16px]">
                             {vitalData?.rr}
                         </div>
                     </div>
 
                     <div className="flex gap-2">
-                        <div className="text-[#210535] font-semibold text-[15px]">체온</div>
-                        <div className="text-[#210535] text-[15px]">
+                        <div className="text-[#210535] font-semibold text-[16px]">체온</div>
+                        <div className="text-[#210535] text-[16px]">
                             {formatTemp(Number(vitalData?.bt))}
                         </div>
                     </div>
                 </div>
 
-                <div className="px-8 flex-1 pb-[136px] flex flex-col items-center justify-center gap-[12px] relative overflow-hidden">
+                <div className={`${widePadding} flex-1 ${bottomPadding} flex flex-col items-center justify-center gap-[12px] relative overflow-hidden`}>
                     {/* 타이머 */}
                     <div className="font-semibold text-[#7553FC] flex gap-2 items-center">
                         {readySeconds !== null && !isRecording && !isFinished ? (
@@ -522,13 +583,28 @@ export default function LiveCPXClient({ category, caseName }: Props) {
 
                     </div>
                 </div>
+            </div>
 
+            {isPanel ? (
+                <div className="px-4 py-3 bg-white">
+                    <button
+                        type="button"
+                        className="w-full rounded-xl bg-[#C3B5FF] text-white text-[20px] font-semibold p-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={isUploading || seconds === INITIAL_SECONDS}
+                        onClick={stopSession}
+                    >
+                        종료 및 채점하기
+                    </button>
+                </div>
+            ) : (
                 <BottomFixButton
-                    disabled={isUploading || seconds == INITIAL_SECONDS}
+                    // disabled={isUploading || seconds == INITIAL_SECONDS}
+                    disabled={true}
                     buttonName={"종료 및 채점하기"}
                     onClick={stopSession}
                     loading={isPending || isUploading}
                 />
+            )}
                 {statusMessage && (
                     <>
                         <div
@@ -544,7 +620,18 @@ export default function LiveCPXClient({ category, caseName }: Props) {
                     </>
 
                 )}
-            </div>
-        </div >
+            </div >
+            {scoreParams && (
+                <div className="fixed inset-0 z-[300] bg-white overflow-y-auto">
+                    <ScoreClient
+                        s3Key=""
+                        transcriptS3Key={scoreParams.transcriptS3Key}
+                        caseName={scoreParams.caseName}
+                        origin={scoreParams.origin}
+                        showHeader={false}
+                    />
+                </div>
+            )}
+        </>
     );
 }

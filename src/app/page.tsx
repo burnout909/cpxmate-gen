@@ -40,7 +40,7 @@ export default function SelectPage() {
     };
 
     return (
-        <div className="flex flex-col relative">
+        <div className="flex flex-col relative max-w-[550px] mx-auto max-h-[812px]">
             <Header />
             <SmallHeader title="Case 선택" onClick={() => router.push('/')} />
 
@@ -93,7 +93,7 @@ export default function SelectPage() {
                 disabled={!selected.case || isPending} // 로딩 중에는 비활성화
                 loading={isPending} // 로딩 스피너 표시
                 onClick={handleStartPractice}
-                buttonName={"실습 시작하기"}
+                buttonName={"시나리오 생성하기"}
             />
         </div>
     );

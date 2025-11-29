@@ -8,7 +8,7 @@
     "history",
     "additional_history",
     "physical_exam",
-    "questions"
+    "final_question"
   ],
   "properties": {
     "meta": {
@@ -93,7 +93,7 @@
       "(복부 촉진)간이 만져지고 단단한 느낌임."
     ]
   },
-  "questions": [
+  "final_question": [
     "의사의 설명에 대해서 환자로서 추가로 궁금할 만한 질문 1개 이후 질문 없음."
   ]
 }

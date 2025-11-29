@@ -2,49 +2,38 @@
 "use client";
 
 import { ChecklistItemState, ChecklistJson } from "@/types/dashboard";
-import React from "react";
+import React, { useState } from "react";
 
 interface ChecklistLinkModuleProps {
   checklistJson: ChecklistJson;
   onChange: (next: ChecklistJson) => void;
+  disabled?: boolean;
 }
 
 const sectionTitleClass =
-  "text-sm font-semibold text-[#210535] mb-2 mt-4 first:mt-0 border-b border-[#E0DAFA] pb-1";
+  "text-[20px] font-semibold text-[#210535] mb-2 mt-4 first:mt-0 border-b border-[#E0DAFA] pb-1 mb-5";
 
-const rowBase =
-  "grid grid-cols-[64px,1fr,24px] items-start gap-2 px-2 py-1.5 rounded-lg hover:bg-[#F7F4FF]";
 
-const checklistLabelClass = "text-xs font-medium text-[#4A3C85]";
-const checklistCriteriaClass = "text-[11px] text-[#6F659C]";
-const checklistExampleClass = "text-[11px] text-[#9A8FD4]";
+const checklistCriteriaClass = "text-base text-gray-800 font-medium";
 
 const renderSection = (
   title: string,
   items: ChecklistItemState[],
   onToggle: (id: string) => void
 ) => (
-  <div>
-    <h3 className={sectionTitleClass}>{title}</h3>
-    <div className="space-y-1">
+  <div className="mb-6">
+    <div className="space-y-6">
       {items.map((item) => (
-        <label key={item.id} className={rowBase}>
-          <span className={`${checklistLabelClass} mt-[2px]`}>{item.id}</span>
+        <label key={item.id} className="flex justify-between gap-4 px-2">
           <div>
-            <div className="text-xs font-semibold text-[#210535] mb-0.5">
+            <div className="text-base font-semibold text-black mb-0.5">
               {item.title}
             </div>
             <div className={checklistCriteriaClass}>{item.criteria}</div>
-            {/* {item.example?.length > 0 && (
-              <div className={checklistExampleClass}>
-                예시: {item.example[0]}
-                {item.example.length > 1 && " 외 ..."}
-              </div>
-            )} */}
           </div>
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 rounded border-[#C6BDF7] text-[#8A78FF] focus:ring-[#8A78FF]"
+            className="h-[18px] w-[18px] rounded border-[#C6BDF7] text-[#8A78FF] focus:ring-[#8A78FF] shrink-0" 
             checked={item.checked}
             onChange={() => onToggle(item.id)}
           />
@@ -57,7 +46,16 @@ const renderSection = (
 export const ChecklistPannel: React.FC<ChecklistLinkModuleProps> = ({
   checklistJson,
   onChange,
+  disabled = false,
 }) => {
+  const tabs: { key: keyof ChecklistJson; label: string }[] = [
+    { key: "history", label: "병력 청취" },
+    { key: "physicalExam", label: "신체 진찰" },
+    { key: "education", label: "환자 교육" },
+    { key: "ppi", label: "환자-의사관계" },
+  ];
+  const [activeTab, setActiveTab] = useState<keyof ChecklistJson>("history");
+
   const toggleInSection = (
     sectionKey: keyof ChecklistJson,
     id: string
@@ -74,43 +72,42 @@ export const ChecklistPannel: React.FC<ChecklistLinkModuleProps> = ({
   };
 
   return (
-    <section className="flex flex-col h-full rounded-2xl border border-[#D8D2F5] bg-white shadow-sm">
+    <section className="flex flex-1 flex-col h-[calc(100vh-120px)] rounded-2xl border border-[#D8D2F5] bg-white shadow-sm">
       {/* 헤더 */}
-      <header className="border-b border-[#D8D2F5] px-4 py-3">
-        <h2 className="text-lg font-semibold text-[#210535]">ChecklistLinkModule</h2>
-        <p className="text-xs text-[#7D72B1] mt-1">
-          병력청취 / 신체진찰 / 환자교육 / 환자-의사관계 체크리스트를 시나리오에 링크하는 영역
-        </p>
+      <header className="p-4">
+        <h2 className="text-xl font-semibold text-[#210535]">체크리스트 확정</h2>
       </header>
 
-      {/* 내용 */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 text-sm">
-        {renderSection("병력 청취 (History)", checklistJson.history, (id) =>
-          toggleInSection("history", id)
-        )}
-        {renderSection(
-          "신체 진찰 (Physical Exam)",
-          checklistJson.physicalExam,
-          (id) => toggleInSection("physicalExam", id)
-        )}
-        {renderSection("환자 교육 (Education)", checklistJson.education, (id) =>
-          toggleInSection("education", id)
-        )}
-        {renderSection("환자-의사관계 (PPI)", checklistJson.ppi, (id) =>
-          toggleInSection("ppi", id)
-        )}
+      {/* 탭 */}
+      <div className="px-4 pb-2 flex gap-2">
+        {tabs.map((tab) => {
+          const isActive = tab.key === activeTab;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => !disabled && setActiveTab(tab.key)}
+              disabled={disabled}
+              className={`rounded-lg px-3 py-2 text-base font-semibold transition-colors border ${
+                isActive
+                  ? "bg-[#7553FC] text-white border-[#6A4EF5]"
+                  : "bg-[#F1EDFF] text-[#4A3C85] border-[#E0DAFA]"
+              } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* 하단 - 저장 */}
-      <footer className="border-t border-[#D8D2F5] px-4 py-3 flex justify-end">
-        <button
-          type="button"
-          className="rounded-xl bg-[#C3B5FF] text-white text-sm font-semibold px-4 py-2"
-          // TODO: checklistJson을 JSON 파일로 저장하거나 서버로 보내는 로직 연결
-        >
-          Checklist JSON 저장하기
-        </button>
-      </footer>
+      {/* 내용 */}
+      <div className="flex-1 overflow-y-scroll px-4 py-3 text-[20px] space-y-5">
+        {renderSection(
+          tabs.find((t) => t.key === activeTab)?.label || "",
+          checklistJson[activeTab],
+          (id) => !disabled && toggleInSection(activeTab, id)
+        )}
+      </div>
     </section>
   );
 };

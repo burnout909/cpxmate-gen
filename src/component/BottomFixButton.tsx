@@ -19,7 +19,7 @@ export default function BottomFixButton({
             <button
                 disabled={disabled || loading}
                 onClick={onClick}
-                className={`mx-auto max-w-[1024px] fixed px-6 py-[10px] rounded-[12px]
+                className={`mx-auto max-w-[550px] fixed px-6 py-[10px] rounded-[12px]
           left-[16px] right-[16px] bottom-[32px]
           text-white font-semibold text-[18px]
           flex gap-3 justify-center items-center gap-2 transition-all z-[52] whitespace-pre-line
