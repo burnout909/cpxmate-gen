@@ -46,5 +46,5 @@ export const createInitialScenarioJson = (): VirtualPatient => ({
   history: {},
   additional_history: {},
   physical_exam: "",
-  questions: [],
+  final_question: [],
 });
