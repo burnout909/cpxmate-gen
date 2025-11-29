@@ -3,22 +3,30 @@
 import { useSearchParams } from "next/navigation";
 import { ScenarioDashboardClient } from "@/component/dashboard/ScenarioDashboardClient";
 import Header from "@/component/Header";
+import { Suspense } from "react";
 
-export default function ScenarioGenPage() {
+function ScenarioGenBody() {
     const params = useSearchParams();
     const category = params.get("category") ?? "";
     const caseName = params.get("case") ?? "";
 
     return (
+        <main className="flex-1 px-6 pt-4 pb-10 space-y-4">
+            <ScenarioDashboardClient
+                initialCategory={category}
+                initialCaseName={caseName}
+            />
+        </main>
+    );
+}
+
+export default function ScenarioGenPage() {
+    return (
         <div className="flex flex-col min-h-screen bg-white">
             <Header />
-
-            <main className="flex-1 px-6 pt-4 pb-10 space-y-4">
-                <ScenarioDashboardClient
-                    initialCategory={category}
-                    initialCaseName={caseName}
-                />
-            </main>
+            <Suspense fallback={<main className="flex-1 px-6 pt-4 pb-10" />}>
+                <ScenarioGenBody />
+            </Suspense>
         </div>
     );
 }
